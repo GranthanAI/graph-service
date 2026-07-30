@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any
-from app.api.dependencies import get_db, get_repository
+from app.api.dependencies import get_db, get_graph_service
 from app.db.neo4j import Neo4jDatabase
-from app.repositories.graph_repository import BaseGraphRepository
+from app.services.graph_service import GraphService
 from app.api.schemas.conversation import ConversationResponse
 
 router = APIRouter(prefix="/graph", tags=["Graph Operations"])
@@ -22,63 +22,51 @@ def health_check(db: Neo4jDatabase = Depends(get_db)) -> Dict[str, str]:
     return {"status": "healthy", "database": "Neo4j connected"}
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-def get_conversation(
+async def get_conversation(
     conversation_id: str,
-    repo: BaseGraphRepository = Depends(get_repository)
+    service: GraphService = Depends(get_graph_service)
 ):
     """
     Retrieve details of a single conversation node.
     """
-    node = repo.get_conversation(conversation_id)
-    if not node:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation {conversation_id} not found."
-        )
-    return node
+    return await service.get_conversation(conversation_id)
 
 @router.get("/conversations/{conversation_id}/parent", response_model=ConversationResponse)
-def get_parent(
+async def get_parent(
     conversation_id: str,
-    repo: BaseGraphRepository = Depends(get_repository)
+    service: GraphService = Depends(get_graph_service)
 ):
     """
     Retrieve parent conversation of a conversation node.
     """
-    parent = repo.get_parent(conversation_id)
-    if not parent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Parent for conversation {conversation_id} not found."
-        )
-    return parent
+    return await service.get_parent(conversation_id)
 
 @router.get("/conversations/{conversation_id}/children", response_model=List[ConversationResponse])
-def get_children(
+async def get_children(
     conversation_id: str,
-    repo: BaseGraphRepository = Depends(get_repository)
+    service: GraphService = Depends(get_graph_service)
 ):
     """
     Retrieve immediate children of a conversation node.
     """
-    return repo.get_children(conversation_id)
+    return await service.get_children(conversation_id)
 
 @router.get("/conversations/{conversation_id}/ancestors", response_model=List[ConversationResponse])
-def get_ancestors(
+async def get_ancestors(
     conversation_id: str,
-    repo: BaseGraphRepository = Depends(get_repository)
+    service: GraphService = Depends(get_graph_service)
 ):
     """
     Retrieve all ancestors in the chain of a conversation node.
     """
-    return repo.get_ancestors(conversation_id)
+    return await service.get_ancestors(conversation_id)
 
 @router.get("/conversations/{conversation_id}/descendants", response_model=List[ConversationResponse])
-def get_descendants(
+async def get_descendants(
     conversation_id: str,
-    repo: BaseGraphRepository = Depends(get_repository)
+    service: GraphService = Depends(get_graph_service)
 ):
     """
     Retrieve all descendants of a conversation node.
     """
-    return repo.get_descendants(conversation_id)
+    return await service.get_descendants(conversation_id)

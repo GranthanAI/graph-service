@@ -66,3 +66,36 @@ class GraphService:
         )
         logger.info(f"Successfully deleted/removed conversation {event.conversation_id} from graph.")
 
+    async def get_conversation(self, conversation_id: str) -> dict:
+        """Retrieve node info for a specific conversation, raising NodeNotFoundError if missing."""
+        from app.core.exceptions import NodeNotFoundError
+        node = await asyncio.to_thread(self.repo.get_conversation, conversation_id)
+        if not node:
+            raise NodeNotFoundError(conversation_id)
+        return node
+
+    async def get_parent(self, conversation_id: str) -> dict:
+        """Retrieve parent conversation, raising NodeNotFoundError if conversation or its parent is missing."""
+        from app.core.exceptions import NodeNotFoundError
+        await self.get_conversation(conversation_id)  # Validate node existence
+        parent = await asyncio.to_thread(self.repo.get_parent, conversation_id)
+        if not parent:
+            raise NodeNotFoundError(f"Parent for conversation {conversation_id}")
+        return parent
+
+    async def get_children(self, conversation_id: str) -> list[dict]:
+        """Retrieve immediate children conversations, validating conversation node existence."""
+        await self.get_conversation(conversation_id)  # Validate node existence
+        return await asyncio.to_thread(self.repo.get_children, conversation_id)
+
+    async def get_ancestors(self, conversation_id: str) -> list[dict]:
+        """Retrieve ancestors (complete parent chain), validating conversation node existence."""
+        await self.get_conversation(conversation_id)  # Validate node existence
+        return await asyncio.to_thread(self.repo.get_ancestors, conversation_id)
+
+    async def get_descendants(self, conversation_id: str) -> list[dict]:
+        """Retrieve descendants subtree, validating conversation node existence."""
+        await self.get_conversation(conversation_id)  # Validate node existence
+        return await asyncio.to_thread(self.repo.get_descendants, conversation_id)
+
+

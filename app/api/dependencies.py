@@ -2,6 +2,7 @@ from fastapi import Depends
 from neo4j import Driver
 from app.db.neo4j import Neo4jDatabase
 from app.repositories.graph_repository import BaseGraphRepository, Neo4jGraphRepository
+from app.services.graph_service import GraphService
 
 def get_db() -> Neo4jDatabase:
     """
@@ -17,3 +18,11 @@ def get_repository(db: Neo4jDatabase = Depends(get_db)) -> BaseGraphRepository:
     """
     driver: Driver = db.get_driver()
     return Neo4jGraphRepository(driver)
+
+def get_graph_service(repo: BaseGraphRepository = Depends(get_repository)) -> GraphService:
+    """
+    Dependency resolver for the GraphService business logic layer.
+    """
+    return GraphService(repo)
+
+

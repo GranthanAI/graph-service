@@ -52,6 +52,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Register custom exception handler
+from app.core.exceptions import NodeNotFoundError
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(NodeNotFoundError)
+def node_not_found_exception_handler(request: Request, exc: NodeNotFoundError):
+    return JSONResponse(
+        status_code=404,
+        content={"detail": str(exc)}
+    )
+
 # Register routes
 app.include_router(graph.router)
 
