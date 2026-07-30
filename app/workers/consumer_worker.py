@@ -60,29 +60,41 @@ class KafkaConsumerWorker:
         logger.info("Kafka consumer worker successfully stopped.")
 
     async def _consume_loop(self) -> None:
-        """Main polling and event processing loop."""
+        """Main polling and event processing loop (batched)."""
         try:
-            async for msg in self.consumer:
-                if not self._running:
-                    break
-                try:
-                    payload = json.loads(msg.value.decode("utf-8"))
-                    
-                    if msg.topic == settings.KAFKA_CONVERSATION_CREATED_TOPIC:
-                        await self.graph_service.process_conversation_created(payload)
-                    elif msg.topic == settings.KAFKA_CONVERSATION_DELETED_TOPIC:
-                        await self.graph_service.process_conversation_deleted(payload)
-                    elif msg.topic == settings.KAFKA_CONVERSATION_UPDATED_TOPIC:
-                        await self.graph_service.process_conversation_updated(payload)
-                    
-                    # Manually commit offset after processing successfully
-                    await self.consumer.commit()
-                except Exception as e:
-                    logger.error(
-                        f"Error processing message from topic {msg.topic} at offset {msg.offset}: {e}",
-                        exc_info=True
-                    )
-                    # For production: here is where we would send messages to a DLQ
+            while self._running:
+                # Poll a batch of records
+                batch = await self.consumer.getmany(
+                    timeout_ms=settings.KAFKA_BATCH_TIMEOUT_MS,
+                    max_records=settings.KAFKA_BATCH_SIZE
+                )
+                if not batch:
+                    # Yield control to the event loop if no messages are available
+                    await asyncio.sleep(0.1)
+                    continue
+
+                for tp, messages in batch.items():
+                    for msg in messages:
+                        if not self._running:
+                            break
+                        try:
+                            payload = json.loads(msg.value.decode("utf-8"))
+                            
+                            if msg.topic == settings.KAFKA_CONVERSATION_CREATED_TOPIC:
+                                await self.graph_service.process_conversation_created(payload)
+                            elif msg.topic == settings.KAFKA_CONVERSATION_DELETED_TOPIC:
+                                await self.graph_service.process_conversation_deleted(payload)
+                            elif msg.topic == settings.KAFKA_CONVERSATION_UPDATED_TOPIC:
+                                await self.graph_service.process_conversation_updated(payload)
+                        except Exception as e:
+                            logger.error(
+                                f"Error processing message from topic {msg.topic} at offset {msg.offset}: {e}",
+                                exc_info=True
+                            )
+                            # For production: here is where we would send messages to a DLQ
+
+                # Manually commit offsets for the entire batch after successful processing
+                await self.consumer.commit()
         except asyncio.CancelledError:
             logger.debug("Consume loop task cancelled.")
         except Exception as e:

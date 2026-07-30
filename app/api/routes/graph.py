@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Dict, Any
 from app.api.dependencies import get_db, get_graph_service
 from app.db.neo4j import Neo4jDatabase
@@ -44,29 +44,35 @@ async def get_parent(
 @router.get("/conversations/{conversation_id}/children", response_model=List[ConversationResponse])
 async def get_children(
     conversation_id: str,
+    skip: int = Query(0, ge=0, description="Number of children to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Max number of children to return"),
     service: GraphService = Depends(get_graph_service)
 ):
     """
-    Retrieve immediate children of a conversation node.
+    Retrieve immediate children of a conversation node with pagination.
     """
-    return await service.get_children(conversation_id)
+    return await service.get_children(conversation_id, skip=skip, limit=limit)
 
 @router.get("/conversations/{conversation_id}/ancestors", response_model=List[ConversationResponse])
 async def get_ancestors(
     conversation_id: str,
+    skip: int = Query(0, ge=0, description="Number of ancestors to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Max number of ancestors to return"),
     service: GraphService = Depends(get_graph_service)
 ):
     """
-    Retrieve all ancestors in the chain of a conversation node.
+    Retrieve all ancestors in the chain of a conversation node with pagination.
     """
-    return await service.get_ancestors(conversation_id)
+    return await service.get_ancestors(conversation_id, skip=skip, limit=limit)
 
 @router.get("/conversations/{conversation_id}/descendants", response_model=List[ConversationResponse])
 async def get_descendants(
     conversation_id: str,
+    skip: int = Query(0, ge=0, description="Number of descendants to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Max number of descendants to return"),
     service: GraphService = Depends(get_graph_service)
 ):
     """
-    Retrieve all descendants of a conversation node.
+    Retrieve all descendants of a conversation node with pagination.
     """
-    return await service.get_descendants(conversation_id)
+    return await service.get_descendants(conversation_id, skip=skip, limit=limit)

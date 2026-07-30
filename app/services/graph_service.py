@@ -125,19 +125,19 @@ class GraphService:
             raise NodeNotFoundError(f"Parent for conversation {conversation_id}")
         return parent
 
-    async def get_children(self, conversation_id: str) -> list[dict]:
+    async def get_children(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
         """Retrieve immediate children conversations, validating conversation node existence."""
         await self.get_conversation(conversation_id)  # Validate node existence
-        return await asyncio.to_thread(self.repo.get_children, conversation_id)
+        return await asyncio.to_thread(self.repo.get_children, conversation_id, skip=skip, limit=limit)
 
-    async def get_ancestors(self, conversation_id: str) -> list[dict]:
+    async def get_ancestors(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
         """Retrieve ancestors (complete parent chain), validating conversation node existence."""
         await self.get_conversation(conversation_id)  # Validate node existence
-        return await asyncio.to_thread(self.repo.get_ancestors, conversation_id)
+        return await asyncio.to_thread(self.repo.get_ancestors, conversation_id, skip=skip, limit=limit)
 
-    async def get_descendants(self, conversation_id: str) -> list[dict]:
+    async def get_descendants(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
         """Retrieve descendants subtree, validating conversation node existence."""
         await self.get_conversation(conversation_id)  # Validate node existence
-        return await asyncio.to_thread(self.repo.get_descendants, conversation_id)
+        return await asyncio.to_thread(self.repo.get_descendants, conversation_id, skip=skip, limit=limit)
 
 

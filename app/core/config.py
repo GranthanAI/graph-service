@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     
     # Consistency policy
     SOFT_DELETE_ENABLED: bool = True
+    
+    # Ingestion optimizations
+    KAFKA_BATCH_SIZE: int = 100
+    KAFKA_BATCH_TIMEOUT_MS: int = 1000
 
     model_config = SettingsConfigDict(
         env_file=".env",

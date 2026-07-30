@@ -56,15 +56,15 @@ class BaseGraphRepository(ABC):
         pass
 
     @abstractmethod
-    def get_children(self, conversation_id: str) -> List[Dict[str, Any]]:
+    def get_children(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
-    def get_ancestors(self, conversation_id: str) -> List[Dict[str, Any]]:
+    def get_ancestors(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
-    def get_descendants(self, conversation_id: str) -> List[Dict[str, Any]]:
+    def get_descendants(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -141,35 +141,45 @@ class Neo4jGraphRepository(BaseGraphRepository):
             session.run(DELETE_CONVERSATION_NODE, conversation_id=conversation_id)
 
     def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        with self.driver.session() as session:
-            result = session.run(GET_CONVERSATION_NODE, conversation_id=conversation_id)
+        def _work(tx):
+            result = tx.run(GET_CONVERSATION_NODE, conversation_id=conversation_id)
             record = result.single()
             if record:
                 return dict(record["c"])
             return None
+        with self.driver.session() as session:
+            return session.execute_read(_work)
 
     def get_parent(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        with self.driver.session() as session:
-            result = session.run(GET_PARENT, conversation_id=conversation_id)
+        def _work(tx):
+            result = tx.run(GET_PARENT, conversation_id=conversation_id)
             record = result.single()
             if record:
                 return dict(record["parent"])
             return None
-
-    def get_children(self, conversation_id: str) -> List[Dict[str, Any]]:
         with self.driver.session() as session:
-            result = session.run(GET_CHILDREN, conversation_id=conversation_id)
+            return session.execute_read(_work)
+
+    def get_children(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        def _work(tx):
+            result = tx.run(GET_CHILDREN, conversation_id=conversation_id, skip=skip, limit=limit)
             return [dict(record["child"]) for record in result]
-
-    def get_ancestors(self, conversation_id: str) -> List[Dict[str, Any]]:
         with self.driver.session() as session:
-            result = session.run(GET_ANCESTORS, conversation_id=conversation_id)
+            return session.execute_read(_work)
+
+    def get_ancestors(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        def _work(tx):
+            result = tx.run(GET_ANCESTORS, conversation_id=conversation_id, skip=skip, limit=limit)
             return [dict(record["ancestor"]) for record in result]
-
-    def get_descendants(self, conversation_id: str) -> List[Dict[str, Any]]:
         with self.driver.session() as session:
-            result = session.run(GET_DESCENDANTS, conversation_id=conversation_id)
+            return session.execute_read(_work)
+
+    def get_descendants(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        def _work(tx):
+            result = tx.run(GET_DESCENDANTS, conversation_id=conversation_id, skip=skip, limit=limit)
             return [dict(record["descendant"]) for record in result]
+        with self.driver.session() as session:
+            return session.execute_read(_work)
 
     def create_conversation_with_parent(
         self,
