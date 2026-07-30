@@ -16,7 +16,11 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_CONVERSATION_CREATED_TOPIC: str = "conversation.created"
     KAFKA_CONVERSATION_DELETED_TOPIC: str = "conversation.deleted"
+    KAFKA_CONVERSATION_UPDATED_TOPIC: str = "conversation.updated"
     KAFKA_CONSUMER_GROUP_ID: str = "graph-service-consumer"
+    
+    # Consistency policy
+    SOFT_DELETE_ENABLED: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

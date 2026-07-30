@@ -7,7 +7,9 @@ from app.db.cypher.conversation_queries import (
     MERGE_CONVERSATION_NODE,
     MERGE_HAS_CHILD_RELATIONSHIP,
     MERGE_CREATED_FROM_RELATIONSHIP,
-    DELETE_CONVERSATION_NODE
+    DELETE_CONVERSATION_NODE,
+    UPDATE_CONVERSATION_NODE,
+    SOFT_DELETE_CONVERSATION_NODE
 )
 from app.db.cypher.traversal_queries import (
     GET_CONVERSATION_NODE,
@@ -75,6 +77,20 @@ class BaseGraphRepository(ABC):
         created_at: str,
         updated_at: str,
         parent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def soft_delete_conversation(self, conversation_id: str, updated_at: str) -> None:
+        pass
+
+    @abstractmethod
+    def update_conversation_node(
+        self,
+        conversation_id: str,
+        title: Optional[str],
+        status: Optional[str],
+        updated_at: Optional[str]
     ) -> Dict[str, Any]:
         pass
 
@@ -181,6 +197,7 @@ class Neo4jGraphRepository(BaseGraphRepository):
                 child_node = dict(record["c"]) if record else {}
 
                 # 2. If parent_id exists, merge parent stub node and relationships
+                # Use Unix Epoch for stub creation timestamps so real events can override it
                 if parent_id:
                     tx.run(
                         MERGE_CONVERSATION_NODE,
@@ -188,8 +205,8 @@ class Neo4jGraphRepository(BaseGraphRepository):
                         user_id=user_id,
                         title="Stub Conversation",
                         status="ACTIVE",
-                        created_at=created_at,
-                        updated_at=updated_at
+                        created_at="1970-01-01T00:00:00Z",
+                        updated_at="1970-01-01T00:00:00Z"
                     )
                     tx.run(MERGE_HAS_CHILD_RELATIONSHIP, parent_id=parent_id, child_id=conversation_id)
                     tx.run(MERGE_CREATED_FROM_RELATIONSHIP, parent_id=parent_id, child_id=conversation_id)
@@ -197,3 +214,27 @@ class Neo4jGraphRepository(BaseGraphRepository):
                 return child_node
 
             return session.execute_write(_tx)
+
+    def soft_delete_conversation(self, conversation_id: str, updated_at: str) -> None:
+        with self.driver.session() as session:
+            session.run(SOFT_DELETE_CONVERSATION_NODE, conversation_id=conversation_id, updated_at=updated_at)
+
+    def update_conversation_node(
+        self,
+        conversation_id: str,
+        title: Optional[str],
+        status: Optional[str],
+        updated_at: Optional[str]
+    ) -> Dict[str, Any]:
+        with self.driver.session() as session:
+            result = session.run(
+                UPDATE_CONVERSATION_NODE,
+                conversation_id=conversation_id,
+                title=title,
+                status=status,
+                updated_at=updated_at
+            )
+            record = result.single()
+            if record:
+                return dict(record["c"])
+            return {}

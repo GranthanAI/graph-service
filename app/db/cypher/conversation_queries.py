@@ -19,9 +19,18 @@ ON CREATE SET c.user_id = $user_id,
               c.status = $status,
               c.created_at = $created_at,
               c.updated_at = $updated_at
-ON MATCH SET c.title = $title,
-             c.status = $status,
-             c.updated_at = $updated_at
+ON MATCH SET c.title = case when c.updated_at IS NULL OR $updated_at >= c.updated_at then $title else c.title end,
+             c.status = case when c.updated_at IS NULL OR $updated_at >= c.updated_at then $status else c.status end,
+             c.updated_at = case when c.updated_at IS NULL OR $updated_at >= c.updated_at then $updated_at else c.updated_at end
+RETURN c
+"""
+
+UPDATE_CONVERSATION_NODE = """
+MATCH (c:Conversation {conversation_id: $conversation_id})
+WHERE c.updated_at IS NULL OR $updated_at >= c.updated_at
+SET c.title = case when $title IS NOT NULL then $title else c.title end,
+    c.status = case when $status IS NOT NULL then $status else c.status end,
+    c.updated_at = case when $updated_at IS NOT NULL then $updated_at else c.updated_at end
 RETURN c
 """
 
@@ -42,4 +51,12 @@ RETURN r
 DELETE_CONVERSATION_NODE = """
 MATCH (c:Conversation {conversation_id: $conversation_id})
 DETACH DELETE c
+"""
+
+SOFT_DELETE_CONVERSATION_NODE = """
+MATCH (c:Conversation {conversation_id: $conversation_id})
+WHERE c.updated_at IS NULL OR $updated_at >= c.updated_at
+SET c.status = "DELETED",
+    c.updated_at = $updated_at
+RETURN c
 """

@@ -42,7 +42,7 @@ class GraphService:
             title=title,
             status=event.conversation_status,
             created_at=event.created_at,
-            updated_at=now_iso,
+            updated_at=event.created_at,
             parent_id=event.parent_conversation_id
         )
         logger.info(f"Successfully synchronized conversation {event.conversation_id} in graph.")
@@ -57,14 +57,56 @@ class GraphService:
                 if k not in event_data:
                     event_data[k] = v
 
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if not event_data.get("deleted_at"):
+            event_data["deleted_at"] = now_iso
+
         event = ConversationDeletedEvent(**event_data)
+        
+        # Execute soft or hard delete based on config setting
+        from app.core.config import settings
+        if settings.SOFT_DELETE_ENABLED:
+            await asyncio.to_thread(
+                self.repo.soft_delete_conversation,
+                conversation_id=event.conversation_id,
+                updated_at=event.deleted_at
+            )
+            logger.info(f"Successfully soft-deleted conversation {event.conversation_id} in graph.")
+        else:
+            await asyncio.to_thread(
+                self.repo.delete_conversation,
+                conversation_id=event.conversation_id
+            )
+            logger.info(f"Successfully hard-deleted (removed) conversation {event.conversation_id} from graph.")
+
+    async def process_conversation_updated(self, event_data: dict) -> None:
+        logger.info(f"Processing conversation.updated event: {event_data.get('conversation_id')}")
+        
+        # Handle nested payload format
+        if "payload" in event_data and isinstance(event_data["payload"], dict):
+            payload = event_data["payload"]
+            for k, v in payload.items():
+                if k not in event_data:
+                    event_data[k] = v
+
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if not event_data.get("updated_at"):
+            event_data["updated_at"] = now_iso
+
+        from app.events.conversation_updated import ConversationUpdatedEvent
+        event = ConversationUpdatedEvent(**event_data)
         
         # Execute DB call in a separate thread to keep FastAPI event loop unblocked
         await asyncio.to_thread(
-            self.repo.delete_conversation,
-            conversation_id=event.conversation_id
+            self.repo.update_conversation_node,
+            conversation_id=event.conversation_id,
+            title=event.title,
+            status=event.status,
+            updated_at=event.updated_at
         )
-        logger.info(f"Successfully deleted/removed conversation {event.conversation_id} from graph.")
+        logger.info(f"Successfully updated conversation {event.conversation_id} properties in graph.")
 
     async def get_conversation(self, conversation_id: str) -> dict:
         """Retrieve node info for a specific conversation, raising NodeNotFoundError if missing."""

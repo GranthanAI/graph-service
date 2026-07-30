@@ -23,10 +23,11 @@ class KafkaConsumerWorker:
         if self._running:
             return
         
-        logger.info("Starting Kafka consumer worker...")
+        logger.info(f"Starting Kafka consumer worker with group ID: {settings.KAFKA_CONSUMER_GROUP_ID}...")
         self.consumer = AIOKafkaConsumer(
             settings.KAFKA_CONVERSATION_CREATED_TOPIC,
             settings.KAFKA_CONVERSATION_DELETED_TOPIC,
+            settings.KAFKA_CONVERSATION_UPDATED_TOPIC,
             bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
             group_id=settings.KAFKA_CONSUMER_GROUP_ID,
             auto_offset_reset="earliest",
@@ -71,6 +72,8 @@ class KafkaConsumerWorker:
                         await self.graph_service.process_conversation_created(payload)
                     elif msg.topic == settings.KAFKA_CONVERSATION_DELETED_TOPIC:
                         await self.graph_service.process_conversation_deleted(payload)
+                    elif msg.topic == settings.KAFKA_CONVERSATION_UPDATED_TOPIC:
+                        await self.graph_service.process_conversation_updated(payload)
                     
                     # Manually commit offset after processing successfully
                     await self.consumer.commit()

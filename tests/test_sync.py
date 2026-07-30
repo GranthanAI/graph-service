@@ -6,8 +6,26 @@ from aiokafka import AIOKafkaProducer
 from app.main import app
 from app.core.config import settings
 
+async def assert_eventually(client, path, assert_fn, timeout=10.0, interval=0.5):
+    """Helper to poll an endpoint until assertions pass or timeout is reached."""
+    start = asyncio.get_running_loop().time()
+    last_ex = None
+    while asyncio.get_running_loop().time() - start < timeout:
+        try:
+            resp = client.get(path)
+            assert_fn(resp)
+            return resp
+        except AssertionError as e:
+            last_ex = e
+            await asyncio.sleep(interval)
+    if last_ex:
+        raise last_ex
+    raise AssertionError(f"Timeout waiting for assertion on path: {path}")
+
 @pytest.mark.anyio
 async def test_kafka_neo4j_sync() -> None:
+    # Isolate consumer group for tests to avoid partition sharing with active local dev server
+    settings.KAFKA_CONSUMER_GROUP_ID = "graph-service-consumer-test-sync"
     # Use TestClient as context manager to invoke app lifespan (starts/stops consumer worker)
     with TestClient(app) as client:
         # Initialize producer inside test to publish mock events to local Kafka broker
@@ -16,6 +34,12 @@ async def test_kafka_neo4j_sync() -> None:
         
         test_conv_id = "test-conv-12345"
         test_parent_id = "test-parent-12345"
+        
+        # Clean up database first to ensure no dirty state from previous runs
+        from app.api.dependencies import get_repository, get_db
+        repo = get_repository(get_db())
+        repo.delete_conversation(test_conv_id)
+        repo.delete_conversation(test_parent_id)
         
         # 1. Publish conversation.created event
         event_created = {
@@ -35,29 +59,30 @@ async def test_kafka_neo4j_sync() -> None:
             json.dumps(event_created).encode("utf-8")
         )
         
-        # Give the background consumer worker a moment to poll and write to Neo4j
-        await asyncio.sleep(3.0)
+        # Verify node creation and property synchronization eventually
+        def assert_created(r):
+            assert r.status_code == 200
+            data = r.json()
+            assert data["conversation_id"] == test_conv_id
+            assert data["user_id"] == "user-123"
+            assert data["status"] == "ACTIVE"
+        await assert_eventually(client, f"/graph/conversations/{test_conv_id}", assert_created)
         
-        # Verify node creation and property synchronization
-        response_child = client.get(f"/graph/conversations/{test_conv_id}")
-        assert response_child.status_code == 200
-        data_child = response_child.json()
-        assert data_child["conversation_id"] == test_conv_id
-        assert data_child["user_id"] == "user-123"
-        assert data_child["status"] == "ACTIVE"
+        # Verify parent stub node auto-creation eventually
+        def assert_parent_created(r):
+            assert r.status_code == 200
+            assert r.json()["conversation_id"] == test_parent_id
+        await assert_eventually(client, f"/graph/conversations/{test_parent_id}", assert_parent_created)
         
-        # Verify parent stub node auto-creation
-        response_parent = client.get(f"/graph/conversations/{test_parent_id}")
-        assert response_parent.status_code == 200
-        data_parent = response_parent.json()
-        assert data_parent["conversation_id"] == test_parent_id
-        
-        # Verify relationships (CREATED_FROM relationship)
-        response_parent_rel = client.get(f"/graph/conversations/{test_conv_id}/parent")
-        assert response_parent_rel.status_code == 200
-        assert response_parent_rel.json()["conversation_id"] == test_parent_id
-
+        # Verify relationships (CREATED_FROM relationship) eventually
+        def assert_parent_relationship(r):
+            assert r.status_code == 200
+            assert r.json()["conversation_id"] == test_parent_id
+        await assert_eventually(client, f"/graph/conversations/{test_conv_id}/parent", assert_parent_relationship)
+ 
         # 2. Publish conversation.deleted event
+        # Toggle soft delete off to verify physical hard delete
+        settings.SOFT_DELETE_ENABLED = False
         event_deleted = {
             "event_id": "event-2",
             "event_version": 1,
@@ -73,11 +98,9 @@ async def test_kafka_neo4j_sync() -> None:
             json.dumps(event_deleted).encode("utf-8")
         )
         
-        # Give background consumer worker time to execute deletion query
-        await asyncio.sleep(3.0)
-        
-        # Verify child node is removed from graph database
-        response_child_post_delete = client.get(f"/graph/conversations/{test_conv_id}")
-        assert response_child_post_delete.status_code == 404
+        # Verify child node is removed from graph database eventually
+        def assert_deleted(r):
+            assert r.status_code == 404
+        await assert_eventually(client, f"/graph/conversations/{test_conv_id}", assert_deleted)
         
         await producer.stop()
