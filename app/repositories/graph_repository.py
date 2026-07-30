@@ -65,6 +65,19 @@ class BaseGraphRepository(ABC):
     def get_descendants(self, conversation_id: str) -> List[Dict[str, Any]]:
         pass
 
+    @abstractmethod
+    def create_conversation_with_parent(
+        self,
+        conversation_id: str,
+        user_id: str,
+        title: str,
+        status: str,
+        created_at: str,
+        updated_at: str,
+        parent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        pass
+
 
 class Neo4jGraphRepository(BaseGraphRepository):
     """
@@ -141,3 +154,46 @@ class Neo4jGraphRepository(BaseGraphRepository):
         with self.driver.session() as session:
             result = session.run(GET_DESCENDANTS, conversation_id=conversation_id)
             return [dict(record["descendant"]) for record in result]
+
+    def create_conversation_with_parent(
+        self,
+        conversation_id: str,
+        user_id: str,
+        title: str,
+        status: str,
+        created_at: str,
+        updated_at: str,
+        parent_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        with self.driver.session() as session:
+            def _tx(tx):
+                # 1. Merge child conversation node
+                result = tx.run(
+                    MERGE_CONVERSATION_NODE,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    title=title,
+                    status=status,
+                    created_at=created_at,
+                    updated_at=updated_at
+                )
+                record = result.single()
+                child_node = dict(record["c"]) if record else {}
+
+                # 2. If parent_id exists, merge parent stub node and relationships
+                if parent_id:
+                    tx.run(
+                        MERGE_CONVERSATION_NODE,
+                        conversation_id=parent_id,
+                        user_id=user_id,
+                        title="Stub Conversation",
+                        status="ACTIVE",
+                        created_at=created_at,
+                        updated_at=updated_at
+                    )
+                    tx.run(MERGE_HAS_CHILD_RELATIONSHIP, parent_id=parent_id, child_id=conversation_id)
+                    tx.run(MERGE_CREATED_FROM_RELATIONSHIP, parent_id=parent_id, child_id=conversation_id)
+                
+                return child_node
+
+            return session.execute_write(_tx)

@@ -25,6 +25,14 @@ async def lifespan(app: FastAPI):
         repo = get_repository(db)
         repo.create_constraints_and_indexes()
         logger.info("Neo4j connectivity verified and database schema constraints successfully applied.")
+        
+        # Instantiate service and background worker
+        from app.services.graph_service import GraphService
+        from app.workers.consumer_worker import KafkaConsumerWorker
+        
+        graph_service = GraphService(repo)
+        app.state.consumer_worker = KafkaConsumerWorker(graph_service)
+        await app.state.consumer_worker.start()
     except Exception as e:
         logger.critical(f"Critical error initializing Neo4j connection on startup: {e}")
         # Crash fast if database cannot be connected on startup
@@ -32,8 +40,10 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Clean shutdown of DB connections
+    # Clean shutdown of DB connections and consumer worker
     logger.info("Shutting down Graph Service...")
+    if hasattr(app.state, "consumer_worker"):
+        await app.state.consumer_worker.stop()
     db.close()
     logger.info("Graph Service successfully stopped.")
 
