@@ -1,17 +1,7 @@
-# Kafka consumer for conversation events (created, deleted)
-import logging
-
-logger = logging.getLogger(__name__)
-
-class ConversationConsumer:
-    """
-    Kafka consumer class to poll and process conversation events.
-    """
-    def __init__(self) -> None:
-        pass
-
-    def start(self) -> None:
-        logger.info("Starting conversation event consumer...")
-
-    def stop(self) -> None:
-        logger.info("Stopping conversation event consumer...")
+# This file is intentionally removed.
+#
+# ConversationConsumer was a stub that duplicated the role of KafkaConsumerWorker
+# (app/workers/consumer_worker.py) without implementing any logic.
+#
+# All Kafka event consumption for the Graph Service is handled by:
+#   app/workers/consumer_worker.py  →  KafkaConsumerWorker

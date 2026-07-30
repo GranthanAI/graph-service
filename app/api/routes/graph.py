@@ -8,7 +8,10 @@ from app.api.schemas.conversation import ConversationResponse
 router = APIRouter(prefix="/graph", tags=["Graph Operations"])
 
 @router.get("/health", status_code=status.HTTP_200_OK)
-def health_check(db: Neo4jDatabase = Depends(get_db)) -> Dict[str, str]:
+async def health_check(
+    db: Neo4jDatabase = Depends(get_db),
+    service: GraphService = Depends(get_graph_service)
+) -> Dict[str, Any]:
     """
     Health check endpoint. Verifies that the service is running and
     that the Neo4j database is reachable.
@@ -19,7 +22,13 @@ def health_check(db: Neo4jDatabase = Depends(get_db)) -> Dict[str, str]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Neo4j database connectivity check failed."
         )
-    return {"status": "healthy", "database": "Neo4j connected"}
+    message_count = await service.get_message_count()
+    return {
+        "status": "healthy",
+        "database": "Neo4j connected",
+        "message_count": message_count
+    }
+
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(

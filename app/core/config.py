@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     KAFKA_CONVERSATION_CREATED_TOPIC: str = "conversation.created"
     KAFKA_CONVERSATION_DELETED_TOPIC: str = "conversation.deleted"
     KAFKA_CONVERSATION_UPDATED_TOPIC: str = "conversation.updated"
+    KAFKA_CHAT_MESSAGE_CREATED_TOPIC: str = "chat.message.created"
     KAFKA_CONSUMER_GROUP_ID: str = "graph-service-consumer"
     
     # Consistency policy
