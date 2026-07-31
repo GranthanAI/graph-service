@@ -65,7 +65,9 @@ def node_not_found_exception_handler(request: Request, exc: NodeNotFoundError):
     )
 
 # Register routes
+from app.api.routes import internal
 app.include_router(graph.router)
+app.include_router(internal.router)
 
 @app.get("/")
 def read_root():

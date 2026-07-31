@@ -25,6 +25,7 @@ from app.db.cypher.traversal_queries import (
     GET_CHILDREN,
     GET_ANCESTORS,
     GET_DESCENDANTS,
+    GET_MEMORY_CONTEXT,
 )
 
 
@@ -79,6 +80,10 @@ class BaseGraphRepository(ABC):
 
     @abstractmethod
     def get_descendants(self, conversation_id: str, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    def get_memory_context(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -232,6 +237,32 @@ class Neo4jGraphRepository(BaseGraphRepository):
         def _work(tx):
             result = tx.run(GET_DESCENDANTS, conversation_id=conversation_id, skip=skip, limit=limit)
             return [dict(record["descendant"]) for record in result]
+        with self.driver.session() as session:
+            return session.execute_read(_work)
+
+    def get_memory_context(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        def _work(tx):
+            result = tx.run(GET_MEMORY_CONTEXT, conversation_id=conversation_id)
+            record = result.single()
+            if not record:
+                return None
+            lineage_nodes = record["lineage"]
+            if not lineage_nodes:
+                return None
+            
+            lineage_list = []
+            for idx, node in enumerate(lineage_nodes):
+                lineage_list.append({
+                    "conversation_id": node["conversation_id"],
+                    "depth": idx
+                })
+            
+            return {
+                "current_conversation_id": conversation_id,
+                "root_conversation_id": lineage_list[0]["conversation_id"],
+                "lineage_depth": len(lineage_list),
+                "lineage": lineage_list
+            }
         with self.driver.session() as session:
             return session.execute_read(_work)
 

@@ -14,6 +14,7 @@ from app.events.conversation_created import ConversationCreatedEvent
 from app.events.conversation_deleted import ConversationDeletedEvent
 from app.events.conversation_updated import ConversationUpdatedEvent
 from app.events.message_created import MessageCreatedEnvelope
+from app.core.exceptions import NodeNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,6 @@ class GraphService:
 
     async def get_conversation(self, conversation_id: str) -> dict:
         """Retrieve node info for a specific conversation, raising NodeNotFoundError if missing."""
-        from app.core.exceptions import NodeNotFoundError
         node = await asyncio.to_thread(self.repo.get_conversation, conversation_id)
         if not node:
             raise NodeNotFoundError(conversation_id)
@@ -210,7 +210,6 @@ class GraphService:
 
     async def get_parent(self, conversation_id: str) -> dict:
         """Retrieve parent conversation, raising NodeNotFoundError if conversation or its parent is missing."""
-        from app.core.exceptions import NodeNotFoundError
         await self.get_conversation(conversation_id)  # Validate node existence
         parent = await asyncio.to_thread(self.repo.get_parent, conversation_id)
         if not parent:
@@ -231,3 +230,10 @@ class GraphService:
         """Retrieve descendants subtree, validating conversation node existence."""
         await self.get_conversation(conversation_id)
         return await asyncio.to_thread(self.repo.get_descendants, conversation_id, skip=skip, limit=limit)
+
+    async def get_memory_context(self, conversation_id: str) -> dict:
+        """Retrieve conversation lineage memory context, raising NodeNotFoundError if conversation is missing."""
+        context = await asyncio.to_thread(self.repo.get_memory_context, conversation_id)
+        if not context:
+            raise NodeNotFoundError(conversation_id)
+        return context

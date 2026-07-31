@@ -30,3 +30,11 @@ RETURN descendant
 ORDER BY descendant.created_at ASC, descendant.conversation_id ASC
 SKIP $skip LIMIT $limit
 """
+
+GET_MEMORY_CONTEXT = """
+MATCH (c:Conversation {conversation_id: $conversation_id})
+MATCH path = (root:Conversation)-[:HAS_CHILD*0..]->(c)
+WHERE NOT ()-[:HAS_CHILD]->(root)
+RETURN nodes(path) as lineage
+LIMIT 1
+"""
