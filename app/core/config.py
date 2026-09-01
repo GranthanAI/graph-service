@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     KAFKA_BATCH_SIZE: int = 100
     KAFKA_BATCH_TIMEOUT_MS: int = 1000
 
+    # gRPC server: serves GetGraphContext/GetNodesByIds for llm-service's
+    # ContextCollector (default matches llm-service's graph_service_port)
+    GRAPH_GRPC_PORT: int = 50052
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

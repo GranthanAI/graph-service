@@ -1,3 +1,7 @@
+from concurrent import futures
+
+import grpc
+from grpc import aio as grpc_aio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.core.config import settings
@@ -5,6 +9,8 @@ from app.core.logging import setup_logging
 from app.db.neo4j import Neo4jDatabase
 from app.api.dependencies import get_repository
 from app.api.routes import graph
+from app.proto import graph_pb2_grpc
+from app.grpc.graph_context_handler import GraphContextHandler
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,17 @@ async def lifespan(app: FastAPI):
         graph_service = GraphService(repo)
         app.state.consumer_worker = KafkaConsumerWorker(graph_service)
         await app.state.consumer_worker.start()
+
+        # Start gRPC server serving GetGraphContext/GetNodesByIds for
+        # llm-service's ContextCollector.
+        grpc_server = grpc_aio.server(futures.ThreadPoolExecutor(max_workers=10))
+        graph_pb2_grpc.add_GraphServiceServicer_to_server(
+            GraphContextHandler(graph_service), grpc_server
+        )
+        grpc_server.add_insecure_port(f"[::]:{settings.GRAPH_GRPC_PORT}")
+        await grpc_server.start()
+        app.state.grpc_server = grpc_server
+        logger.info(f"Graph Service gRPC server started on port {settings.GRAPH_GRPC_PORT}.")
     except Exception as e:
         logger.critical(f"Critical error initializing Neo4j connection on startup: {e}")
         # Crash fast if database cannot be connected on startup
@@ -44,6 +61,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Graph Service...")
     if hasattr(app.state, "consumer_worker"):
         await app.state.consumer_worker.stop()
+    if hasattr(app.state, "grpc_server"):
+        await app.state.grpc_server.stop(grace=5.0)
     db.close()
     logger.info("Graph Service successfully stopped.")
 
