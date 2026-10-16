@@ -4,6 +4,7 @@ from app.main import app
 from app.api.dependencies import get_repository, get_db
 
 client = TestClient(app)
+client.headers.update({"X-User-Id": "user-q"})
 
 @pytest.fixture(scope="module")
 def setup_test_graph():

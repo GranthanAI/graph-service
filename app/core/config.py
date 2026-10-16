@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     # ContextCollector (default matches llm-service's graph_service_port)
     GRAPH_GRPC_PORT: int = 50052
 
+    # Service-to-service credential(s) accepted on /internal/** (comma-separated
+    # to allow rotation). Empty rejects every internal call (fail closed).
+    INTERNAL_SERVICE_TOKENS: str = ""
+
+    @property
+    def internal_service_tokens(self) -> list[str]:
+        return [t.strip() for t in self.INTERNAL_SERVICE_TOKENS.split(",") if t.strip()]
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

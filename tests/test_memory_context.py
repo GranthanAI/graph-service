@@ -3,6 +3,10 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.api.dependencies import get_repository, get_db
 
+from app.core.config import settings
+
+settings.INTERNAL_SERVICE_TOKENS = "test-internal-token"
+SERVICE_AUTH = {"Authorization": "Bearer test-internal-token"}
 client = TestClient(app)
 
 @pytest.fixture(scope="module")
@@ -65,7 +69,7 @@ def test_memory_context_endpoint(setup_test_graph) -> None:
     ids = setup_test_graph
     
     # 1. Root conversation memory-context check
-    resp = client.get(f"/internal/graph/conversations/{ids['root']}/memory-context")
+    resp = client.get(f"/internal/graph/conversations/{ids['root']}/memory-context?user_id=user-mem", headers=SERVICE_AUTH)
     assert resp.status_code == 200
     data = resp.json()
     assert data["current_conversation_id"] == ids["root"]
@@ -76,7 +80,7 @@ def test_memory_context_endpoint(setup_test_graph) -> None:
     assert data["lineage"][0]["depth"] == 0
     
     # 2. Grandchild conversation memory-context check
-    resp = client.get(f"/internal/graph/conversations/{ids['grandchild']}/memory-context")
+    resp = client.get(f"/internal/graph/conversations/{ids['grandchild']}/memory-context?user_id=user-mem", headers=SERVICE_AUTH)
     assert resp.status_code == 200
     data = resp.json()
     assert data["current_conversation_id"] == ids["grandchild"]
@@ -95,6 +99,6 @@ def test_memory_context_endpoint(setup_test_graph) -> None:
     assert data["lineage"][2]["depth"] == 2
 
     # 3. Non-existent conversation should return 404
-    resp = client.get("/internal/graph/conversations/non-existent-id/memory-context")
+    resp = client.get("/internal/graph/conversations/non-existent-id/memory-context?user_id=user-mem", headers=SERVICE_AUTH)
     assert resp.status_code == 404
     assert "not found" in resp.json()["detail"].lower()

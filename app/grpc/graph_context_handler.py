@@ -22,6 +22,9 @@ from app.services.graph_service import GraphService
 logger = logging.getLogger("graph_service.grpc.graph_context_handler")
 
 _DEFAULT_MAX_NODES = 50
+_MAX_NODES_CAP = 200
+_MAX_DEPTH_CAP = 100
+_MAX_NODE_IDS = 100
 
 
 def _extract_trace_id(context) -> str:
@@ -58,8 +61,19 @@ class GraphContextHandler(graph_pb2_grpc.GraphServiceServicer):
             logger.info(
                 f"gRPC GetGraphContext request received for conversation={request.conversation_id}"
             )
-            limit = request.max_nodes or _DEFAULT_MAX_NODES
-            depth = request.max_depth or 100
+            # Ownership: a conversation that is missing, or owned by another
+            # user, yields the same empty context so IDs cannot be enumerated.
+            conversation = (
+                await asyncio.to_thread(self.graph_service.repo.get_conversation, request.conversation_id)
+                if request.user_id and request.conversation_id
+                else None
+            )
+            if not conversation or conversation.get("user_id") != request.user_id:
+                logger.warning("GetGraphContext denied or not found (trace_id=%s)", trace_id)
+                return graph_pb2.GetGraphContextResponse(request_id=trace_id)
+
+            limit = min(request.max_nodes or _DEFAULT_MAX_NODES, _MAX_NODES_CAP)
+            depth = min(request.max_depth or _MAX_DEPTH_CAP, _MAX_DEPTH_CAP)
 
             ancestors, descendants = await asyncio.gather(
                 asyncio.to_thread(
@@ -75,6 +89,9 @@ class GraphContextHandler(graph_pb2_grpc.GraphServiceServicer):
                     min(limit, depth),
                 ),
             )
+
+            ancestors = [c for c in ancestors if c.get("user_id") == request.user_id]
+            descendants = [c for c in descendants if c.get("user_id") == request.user_id]
 
             nodes = [_conversation_to_node(c) for c in ancestors] + [
                 _conversation_to_node(c) for c in descendants
@@ -122,13 +139,23 @@ class GraphContextHandler(graph_pb2_grpc.GraphServiceServicer):
     async def GetNodesByIds(self, request, context):
         try:
             logger.info(f"gRPC GetNodesByIds request received for {len(request.node_ids)} id(s)")
+            if not request.user_id:
+                return graph_pb2.GetNodesByIdsResponse()
+            if len(request.node_ids) > _MAX_NODE_IDS:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(f"at most {_MAX_NODE_IDS} node_ids per request")
+                return graph_pb2.GetNodesByIdsResponse()
             results = await asyncio.gather(
                 *[
                     asyncio.to_thread(self.graph_service.repo.get_conversation, node_id)
                     for node_id in request.node_ids
                 ]
             )
-            nodes = [_conversation_to_node(conv) for conv in results if conv]
+            nodes = [
+                _conversation_to_node(conv)
+                for conv in results
+                if conv and conv.get("user_id") == request.user_id
+            ]
             return graph_pb2.GetNodesByIdsResponse(nodes=nodes)
         except Exception as e:
             logger.error(f"gRPC GetNodesByIds failed: {e}")

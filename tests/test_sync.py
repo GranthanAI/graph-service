@@ -28,6 +28,7 @@ async def test_kafka_neo4j_sync() -> None:
     settings.KAFKA_CONSUMER_GROUP_ID = "graph-service-consumer-test-sync"
     # Use TestClient as context manager to invoke app lifespan (starts/stops consumer worker)
     with TestClient(app) as client:
+        client.headers.update({"X-User-Id": "user-123"})
         # Initialize producer inside test to publish mock events to local Kafka broker
         producer = AIOKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
         await producer.start()

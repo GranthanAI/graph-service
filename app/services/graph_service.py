@@ -140,6 +140,35 @@ class GraphService:
         )
         logger.info("Conversation node updated", extra={"conversation_id": p.conversation_id})
 
+    @staticmethod
+    def _normalize_message_event(event_data: dict) -> dict:
+        """Accept both wire shapes of chat.message.created.
+
+        Enveloped (original contract): {event_id, ..., payload: {...}}.
+        Flat (what conversation-service publishes today for llm-service):
+        {message_id, conversation_id, user_id, content, timestamp, ...}. Flat
+        events are user messages (assistant output travels on
+        chat.response.generated) and carry no event_id; the Message write is a
+        MERGE on message_id, so redelivery is idempotent either way.
+        """
+        if "payload" in event_data:
+            return event_data
+        trace = event_data.get("trace_context") or {}
+        return {
+            "event_id": event_data.get("event_id") or f"msg-{event_data.get('message_id', '')}",
+            "event_type": event_data.get("event_type", "chat.message.created"),
+            "occurred_at": event_data.get("timestamp"),
+            "source_service": "conversation-service",
+            "correlation_id": trace.get("traceparent") if isinstance(trace, dict) else None,
+            "payload": {
+                "conversation_id": event_data.get("conversation_id"),
+                "message_id": event_data.get("message_id"),
+                "role": event_data.get("role", "user"),
+                "content": event_data.get("content", ""),
+                "user_id": event_data.get("user_id") or None,
+            },
+        }
+
     async def process_message_created(self, event_data: dict) -> None:
         """
         Handles chat.message.created events.
@@ -151,7 +180,7 @@ class GraphService:
         Graph Service is AI-agnostic — no entity extraction happens here.
         Entity extraction is deferred to a future LLM Service pipeline.
         """
-        envelope = MessageCreatedEnvelope(**event_data)
+        envelope = MessageCreatedEnvelope(**self._normalize_message_event(event_data))
         p = envelope.payload
         correlation_id = envelope.correlation_id or ""
 
@@ -201,38 +230,50 @@ class GraphService:
     # Query handlers (REST API)
     # -------------------------------------------------------------------------
 
-    async def get_conversation(self, conversation_id: str) -> dict:
-        """Retrieve node info for a specific conversation, raising NodeNotFoundError if missing."""
+    async def get_conversation(self, conversation_id: str, user_id: str) -> dict:
+        """Retrieve a conversation node the caller owns.
+
+        A missing node and a node owned by someone else raise the same
+        NodeNotFoundError, so conversation IDs cannot be enumerated across users.
+        """
         node = await asyncio.to_thread(self.repo.get_conversation, conversation_id)
-        if not node:
+        if not node or not user_id or node.get("user_id") != user_id:
             raise NodeNotFoundError(conversation_id)
         return node
 
-    async def get_parent(self, conversation_id: str) -> dict:
-        """Retrieve parent conversation, raising NodeNotFoundError if conversation or its parent is missing."""
-        await self.get_conversation(conversation_id)  # Validate node existence
+    @staticmethod
+    def _owned_by(nodes: list[dict], user_id: str) -> list[dict]:
+        return [n for n in nodes if n.get("user_id") == user_id]
+
+    async def get_parent(self, conversation_id: str, user_id: str) -> dict:
+        """Retrieve the caller's parent conversation, raising NodeNotFoundError if missing or not owned."""
+        await self.get_conversation(conversation_id, user_id)
         parent = await asyncio.to_thread(self.repo.get_parent, conversation_id)
-        if not parent:
+        if not parent or parent.get("user_id") != user_id:
             raise NodeNotFoundError(f"Parent for conversation {conversation_id}")
         return parent
 
-    async def get_children(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
-        """Retrieve immediate children conversations, validating conversation node existence."""
-        await self.get_conversation(conversation_id)
-        return await asyncio.to_thread(self.repo.get_children, conversation_id, skip=skip, limit=limit)
+    async def get_children(self, conversation_id: str, user_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
+        """Retrieve immediate children the caller owns."""
+        await self.get_conversation(conversation_id, user_id)
+        children = await asyncio.to_thread(self.repo.get_children, conversation_id, skip=skip, limit=limit)
+        return self._owned_by(children, user_id)
 
-    async def get_ancestors(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
-        """Retrieve ancestors (complete parent chain), validating conversation node existence."""
-        await self.get_conversation(conversation_id)
-        return await asyncio.to_thread(self.repo.get_ancestors, conversation_id, skip=skip, limit=limit)
+    async def get_ancestors(self, conversation_id: str, user_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
+        """Retrieve the caller-owned ancestors (parent chain)."""
+        await self.get_conversation(conversation_id, user_id)
+        ancestors = await asyncio.to_thread(self.repo.get_ancestors, conversation_id, skip=skip, limit=limit)
+        return self._owned_by(ancestors, user_id)
 
-    async def get_descendants(self, conversation_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
-        """Retrieve descendants subtree, validating conversation node existence."""
-        await self.get_conversation(conversation_id)
-        return await asyncio.to_thread(self.repo.get_descendants, conversation_id, skip=skip, limit=limit)
+    async def get_descendants(self, conversation_id: str, user_id: str, skip: int = 0, limit: int = 100) -> list[dict]:
+        """Retrieve the caller-owned descendants subtree."""
+        await self.get_conversation(conversation_id, user_id)
+        descendants = await asyncio.to_thread(self.repo.get_descendants, conversation_id, skip=skip, limit=limit)
+        return self._owned_by(descendants, user_id)
 
-    async def get_memory_context(self, conversation_id: str) -> dict:
-        """Retrieve conversation lineage memory context, raising NodeNotFoundError if conversation is missing."""
+    async def get_memory_context(self, conversation_id: str, user_id: str) -> dict:
+        """Retrieve lineage memory context for a conversation the caller owns."""
+        await self.get_conversation(conversation_id, user_id)
         context = await asyncio.to_thread(self.repo.get_memory_context, conversation_id)
         if not context:
             raise NodeNotFoundError(conversation_id)
