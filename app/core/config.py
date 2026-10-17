@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     KAFKA_CONVERSATION_CREATED_TOPIC: str = "conversation.created"
     KAFKA_CONVERSATION_DELETED_TOPIC: str = "conversation.deleted"
     KAFKA_CONVERSATION_UPDATED_TOPIC: str = "conversation.updated"
+    KAFKA_CHAT_MESSAGE_CREATED_TOPIC: str = "chat.message.created"
     KAFKA_CONSUMER_GROUP_ID: str = "graph-service-consumer"
     
     # Consistency policy
@@ -25,6 +26,18 @@ class Settings(BaseSettings):
     # Ingestion optimizations
     KAFKA_BATCH_SIZE: int = 100
     KAFKA_BATCH_TIMEOUT_MS: int = 1000
+
+    # gRPC server: serves GetGraphContext/GetNodesByIds for llm-service's
+    # ContextCollector (default matches llm-service's graph_service_port)
+    GRAPH_GRPC_PORT: int = 50052
+
+    # Service-to-service credential(s) accepted on /internal/** (comma-separated
+    # to allow rotation). Empty rejects every internal call (fail closed).
+    INTERNAL_SERVICE_TOKENS: str = ""
+
+    @property
+    def internal_service_tokens(self) -> list[str]:
+        return [t.strip() for t in self.INTERNAL_SERVICE_TOKENS.split(",") if t.strip()]
 
     model_config = SettingsConfigDict(
         env_file=".env",

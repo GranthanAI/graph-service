@@ -28,6 +28,7 @@ async def test_updates_and_soft_delete_consistency() -> None:
     settings.KAFKA_CONSUMER_GROUP_ID = "graph-service-consumer-test-consistency"
     # Use TestClient context manager to run FastAPI app lifespan
     with TestClient(app) as client:
+        client.headers.update({"X-User-Id": "user-consist"})
         producer = AIOKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
         await producer.start()
         
@@ -105,7 +106,7 @@ async def test_updates_and_soft_delete_consistency() -> None:
         await asyncio.sleep(2.0)
         
         # Verify title is STILL "Updated Title Root" (stale update safely ignored)
-        resp = client.get(f"/graph/conversations/{test_root_id}")
+        resp = client.get(f"/graph/conversations/{test_root_id}", headers={"X-User-Id": "user-consist"})
         assert resp.status_code == 200
         assert resp.json()["title"] == "Updated Title Root"
         
@@ -130,7 +131,7 @@ async def test_updates_and_soft_delete_consistency() -> None:
         await assert_eventually(client, f"/graph/conversations/{test_root_id}", assert_soft_deleted)
         
         # Verify parent-child lineage connections are preserved
-        resp_parent = client.get(f"/graph/conversations/{test_child_id}/parent")
+        resp_parent = client.get(f"/graph/conversations/{test_child_id}/parent", headers={"X-User-Id": "user-consist"})
         assert resp_parent.status_code == 200
         assert resp_parent.json()["conversation_id"] == test_root_id
         

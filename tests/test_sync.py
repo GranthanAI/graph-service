@@ -28,12 +28,14 @@ async def test_kafka_neo4j_sync() -> None:
     settings.KAFKA_CONSUMER_GROUP_ID = "graph-service-consumer-test-sync"
     # Use TestClient as context manager to invoke app lifespan (starts/stops consumer worker)
     with TestClient(app) as client:
+        client.headers.update({"X-User-Id": "user-123"})
         # Initialize producer inside test to publish mock events to local Kafka broker
         producer = AIOKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
         await producer.start()
         
-        test_conv_id = "test-conv-12345"
-        test_parent_id = "test-parent-12345"
+        import uuid
+        test_conv_id = f"test-conv-{uuid.uuid4()}"
+        test_parent_id = f"test-parent-{uuid.uuid4()}"
         
         # Clean up database first to ensure no dirty state from previous runs
         from app.api.dependencies import get_repository, get_db
@@ -43,7 +45,7 @@ async def test_kafka_neo4j_sync() -> None:
         
         # 1. Publish conversation.created event
         event_created = {
-            "event_id": "event-1",
+            "event_id": str(uuid.uuid4()),
             "event_version": 1,
             "conversation_id": test_conv_id,
             "parent_conversation_id": test_parent_id,
@@ -84,7 +86,7 @@ async def test_kafka_neo4j_sync() -> None:
         # Toggle soft delete off to verify physical hard delete
         settings.SOFT_DELETE_ENABLED = False
         event_deleted = {
-            "event_id": "event-2",
+            "event_id": str(uuid.uuid4()),
             "event_version": 1,
             "conversation_id": test_conv_id,
             "user_id": "user-123",

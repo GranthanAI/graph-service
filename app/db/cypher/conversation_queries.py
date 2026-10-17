@@ -60,3 +60,60 @@ SET c.status = "DELETED",
     c.updated_at = $updated_at
 RETURN c
 """
+
+# ---------------------------------------------------------------------------
+# Message Node Queries
+# ---------------------------------------------------------------------------
+
+CREATE_MESSAGE_CONSTRAINT = """
+CREATE CONSTRAINT message_id_unique IF NOT EXISTS
+FOR (m:Message)
+REQUIRE m.message_id IS UNIQUE
+"""
+
+CREATE_USER_NODE_CONSTRAINT = """
+CREATE CONSTRAINT user_id_unique IF NOT EXISTS
+FOR (u:User)
+REQUIRE u.user_id IS UNIQUE
+"""
+
+MERGE_MESSAGE_NODE = """
+MERGE (m:Message {message_id: $message_id})
+ON CREATE SET
+    m.conversation_id = $conversation_id,
+    m.user_id         = $user_id,
+    m.role            = $role,
+    m.content         = $content,
+    m.occurred_at     = $occurred_at
+RETURN m
+"""
+
+MERGE_MESSAGE_RELATIONSHIPS = """
+MERGE (u:User {user_id: $user_id})
+MERGE (c:Conversation {conversation_id: $conversation_id})
+MERGE (m:Message {message_id: $message_id})
+MERGE (u)-[:SENT]->(m)
+MERGE (m)-[:BELONGS_TO]->(c)
+"""
+
+# ---------------------------------------------------------------------------
+# Idempotency: ProcessedEvent Nodes
+# ---------------------------------------------------------------------------
+
+CREATE_PROCESSED_EVENT_CONSTRAINT = """
+CREATE CONSTRAINT processed_event_id_unique IF NOT EXISTS
+FOR (pe:ProcessedEvent)
+REQUIRE pe.event_id IS UNIQUE
+"""
+
+MERGE_PROCESSED_EVENT = """
+MERGE (pe:ProcessedEvent {event_id: $event_id})
+ON CREATE SET pe.processed_at = $processed_at
+RETURN pe, (pe.processed_at = $processed_at) AS is_new
+"""
+
+GET_PROCESSED_EVENT = """
+MATCH (pe:ProcessedEvent {event_id: $event_id})
+RETURN pe
+"""
+

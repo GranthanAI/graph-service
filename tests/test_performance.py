@@ -28,6 +28,8 @@ async def test_pagination_and_load_performance() -> None:
     settings.KAFKA_CONSUMER_GROUP_ID = "graph-service-consumer-test-performance"
     
     with TestClient(app) as client:
+    
+        client.headers.update({"X-User-Id": "user-perf"})
         producer = AIOKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
         await producer.start()
         
@@ -87,7 +89,7 @@ async def test_pagination_and_load_performance() -> None:
         
         # 3. Verify Pagination on Children
         # Page 1: limit=3, skip=0 (expect perf-child-1, perf-child-2, perf-child-3)
-        resp_p1 = client.get(f"/graph/conversations/{parent_id}/children?skip=0&limit=3")
+        resp_p1 = client.get(f"/graph/conversations/{parent_id}/children?skip=0&limit=3", headers={"X-User-Id": "user-perf"})
         assert resp_p1.status_code == 200
         p1_data = resp_p1.json()
         assert len(p1_data) == 3
@@ -96,7 +98,7 @@ async def test_pagination_and_load_performance() -> None:
         assert p1_data[2]["conversation_id"] == "perf-child-3"
         
         # Page 2: limit=3, skip=3 (expect perf-child-4, perf-child-5, perf-child-6)
-        resp_p2 = client.get(f"/graph/conversations/{parent_id}/children?skip=3&limit=3")
+        resp_p2 = client.get(f"/graph/conversations/{parent_id}/children?skip=3&limit=3", headers={"X-User-Id": "user-perf"})
         assert resp_p2.status_code == 200
         p2_data = resp_p2.json()
         assert len(p2_data) == 3
@@ -105,7 +107,7 @@ async def test_pagination_and_load_performance() -> None:
         assert p2_data[2]["conversation_id"] == "perf-child-6"
         
         # Page 3: limit=5, skip=6 (expect perf-child-7, perf-child-8, perf-child-9, perf-child-10)
-        resp_p3 = client.get(f"/graph/conversations/{parent_id}/children?skip=6&limit=5")
+        resp_p3 = client.get(f"/graph/conversations/{parent_id}/children?skip=6&limit=5", headers={"X-User-Id": "user-perf"})
         assert resp_p3.status_code == 200
         p3_data = resp_p3.json()
         assert len(p3_data) == 4
@@ -113,13 +115,13 @@ async def test_pagination_and_load_performance() -> None:
         assert p3_data[3]["conversation_id"] == "perf-child-10"
 
         # 4. Verify Pagination parameter validations (HTTP 422 Unprocessable Entity)
-        resp_val1 = client.get(f"/graph/conversations/{parent_id}/children?limit=-5")
+        resp_val1 = client.get(f"/graph/conversations/{parent_id}/children?limit=-5", headers={"X-User-Id": "user-perf"})
         assert resp_val1.status_code == 422
         
-        resp_val2 = client.get(f"/graph/conversations/{parent_id}/children?skip=-1")
+        resp_val2 = client.get(f"/graph/conversations/{parent_id}/children?skip=-1", headers={"X-User-Id": "user-perf"})
         assert resp_val2.status_code == 422
         
-        resp_val3 = client.get(f"/graph/conversations/{parent_id}/children?limit=5000")
+        resp_val3 = client.get(f"/graph/conversations/{parent_id}/children?limit=5000", headers={"X-User-Id": "user-perf"})
         assert resp_val3.status_code == 422
         
         # Clean up database test entries
