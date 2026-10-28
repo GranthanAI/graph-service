@@ -29,7 +29,7 @@ infra-logs-kafka:
 	docker compose -f ../docker-compose.yml logs -f kafka
 
 run:
-	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips "$${FORWARDED_ALLOW_IPS:-127.0.0.1}"
 
 test:
 	uv run pytest
