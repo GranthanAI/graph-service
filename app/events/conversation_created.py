@@ -15,6 +15,10 @@ class ConversationCreatedPayload(BaseModel):
     status:                 Optional[str] = "ACTIVE"
     parent_conversation_id: Optional[str] = None
     created_at:             Optional[str] = None
+    # Additive (conversation-service quick wins): a temporary chat never enters the graph; a conversation created by
+    # editing a message records which message it was edited from.
+    temporary:              bool = False
+    edited_from_message_id: Optional[str] = None
 
 
 class ConversationCreatedEvent(BaseModel):
@@ -43,6 +47,8 @@ class ConversationCreatedEvent(BaseModel):
     status:                 Optional[str] = None
     parent_conversation_id: Optional[str] = None
     created_at:             Optional[str] = None
+    temporary:              Optional[bool] = None
+    edited_from_message_id: Optional[str] = None
 
     def get_payload(self) -> ConversationCreatedPayload:
         """
@@ -60,4 +66,6 @@ class ConversationCreatedEvent(BaseModel):
             status=status,
             parent_conversation_id=self.parent_conversation_id,
             created_at=self.created_at,
+            temporary=bool(self.temporary),
+            edited_from_message_id=self.edited_from_message_id,
         )

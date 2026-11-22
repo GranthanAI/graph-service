@@ -96,6 +96,7 @@ class BaseGraphRepository(ABC):
         created_at: str,
         updated_at: str,
         parent_id: Optional[str] = None,
+        edited_from_message_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         pass
 
@@ -275,6 +276,7 @@ class Neo4jGraphRepository(BaseGraphRepository):
         created_at: str,
         updated_at: str,
         parent_id: Optional[str] = None,
+        edited_from_message_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         with self.driver.session() as session:
             def _tx(tx):
@@ -290,6 +292,14 @@ class Neo4jGraphRepository(BaseGraphRepository):
                 )
                 record = result.single()
                 child_node = dict(record["c"]) if record else {}
+
+                # A conversation created by editing a message remembers which one (the tree UI may use it later)
+                if edited_from_message_id:
+                    tx.run(
+                        "MATCH (c:Conversation {conversation_id: $id}) SET c.edited_from_message_id = $mid",
+                        id=conversation_id, mid=edited_from_message_id,
+                    )
+                    child_node["edited_from_message_id"] = edited_from_message_id
 
                 # 2. If parent_id exists, merge parent stub node and relationships
                 # Use Unix Epoch for stub creation timestamps so real events can override it

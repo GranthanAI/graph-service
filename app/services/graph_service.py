@@ -58,6 +58,10 @@ class GraphService:
         p = event.get_payload()
         correlation_id = event.correlation_id or ""
 
+        if p.temporary:             # a temporary chat is never remembered: nothing is created
+            logger.info("temporary_conversation_skipped", extra={"conversation_id": p.conversation_id})
+            return
+
         logger.info(
             "Processing conversation.created",
             extra={"conversation_id": p.conversation_id, "correlation_id": correlation_id},
@@ -76,6 +80,7 @@ class GraphService:
             created_at=created_at,
             updated_at=created_at,
             parent_id=p.parent_conversation_id,
+            **({"edited_from_message_id": p.edited_from_message_id} if p.edited_from_message_id else {}),
         )
         logger.info(
             "Conversation node synchronised",
@@ -166,6 +171,7 @@ class GraphService:
                 "role": event_data.get("role", "user"),
                 "content": event_data.get("content", ""),
                 "user_id": event_data.get("user_id") or None,
+                "temporary": bool(event_data.get("temporary")),
             },
         }
 
@@ -183,6 +189,12 @@ class GraphService:
         envelope = MessageCreatedEnvelope(**self._normalize_message_event(event_data))
         p = envelope.payload
         correlation_id = envelope.correlation_id or ""
+
+        # temporary: true at the top level (flat event) or inside the payload (enveloped event)
+        if p.temporary or bool(event_data.get("temporary")):
+            logger.info("temporary_conversation_skipped",
+                        extra={"conversation_id": p.conversation_id, "message_id": p.message_id})
+            return
 
         logger.info(
             "Processing chat.message.created",

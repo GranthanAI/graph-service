@@ -34,6 +34,8 @@ class MessageCreatedPayload(BaseModel):
     user_id:         Optional[str] = None
     # Optional: present only on regeneration requests
     prompt_content:  Optional[str] = None
+    # Optional: a temporary chat's messages never enter the graph
+    temporary:       bool = False
 
 
 class MessageCreatedEnvelope(BaseModel):
